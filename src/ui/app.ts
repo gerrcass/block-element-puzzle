@@ -1,25 +1,38 @@
 import { BOARD_SIZE, ELEMENTS } from '../core/constants';
 import type { Element } from '../core/constants';
 import { buyDynamite, buyLightning, useDynamite, useLightning } from '../core/powerups';
-import { canPlace, createGame, mulberry32, placeTrayPiece } from '../core';
+import { canPlace, createGameWithRng, mulberry32, placeTrayPiece } from '../core';
 import type { GameState } from '../core/types';
 import { drawBoard, drawPiece, elementColor } from './render';
 
 const STORE_KEY = 'element-blocks-v1';
-type Persist = { highScore: number; bestCombo: number; lifetimeStars: number };
+type Settings = { reducedMotion: boolean };
+type Persist = { highScore: number; bestCombo: number; lifetimeStars: number; settings?: Settings };
 
-function loadPersist(): Persist {
-  try { return { highScore: 0, bestCombo: 0, lifetimeStars: 0, ...JSON.parse(localStorage.getItem(STORE_KEY) || '{}') }; } catch { return { highScore: 0, bestCombo: 0, lifetimeStars: 0 }; }
+function prefersReducedMotion() {
+  try { return typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; }
 }
-function savePersist(s: GameState) {
-  try { localStorage.setItem(STORE_KEY, JSON.stringify({ highScore: s.highScore, bestCombo: s.bestCombo, lifetimeStars: s.lifetimeStars })); } catch {}
+function loadPersist(): Persist {
+  try {
+    const p = { highScore: 0, bestCombo: 0, lifetimeStars: 0, ...JSON.parse(localStorage.getItem(STORE_KEY) || '{}') } as Persist;
+    if (!p.settings) p.settings = { reducedMotion: prefersReducedMotion() };
+    return p;
+  } catch { return { highScore: 0, bestCombo: 0, lifetimeStars: 0, settings: { reducedMotion: prefersReducedMotion() } }; }
+}
+function savePersist(s: GameState, settings: Settings) {
+  try { localStorage.setItem(STORE_KEY, JSON.stringify({ highScore: s.highScore, bestCombo: s.bestCombo, lifetimeStars: s.lifetimeStars, settings })); } catch {}
 }
 
 export function mountApp(root: HTMLDivElement | null): void {
   if (!root) return;
   let persist = loadPersist();
   let rng = mulberry32(Date.now() >>> 0);
-  let state: GameState = { ...createGame(Date.now() >>> 0), ...persist };
+  function newSession() {
+    const seed = Date.now() >>> 0;
+    rng = mulberry32(seed);
+    return { ...createGameWithRng(seed, rng), ...persist };
+  }
+  let state: GameState = newSession();
   let selectedSlot: number | null = null;
   let ghost: { slot: number; row: number; col: number } | null = null;
   let drag: { slot: number; pointerId: number } | null = null;
@@ -62,16 +75,16 @@ export function mountApp(root: HTMLDivElement | null): void {
   const overText = root.querySelector<HTMLParagraphElement>('#overText')!;
 
   function setStatus(msg: string, kind: '' | 'good' | 'bad' = '') { statusMsg = msg; statusKind = kind; render(); }
+  const settings = persist.settings ?? { reducedMotion: prefersReducedMotion() };
   function persistAnd(fn: (s: GameState) => GameState | null) {
     const n = fn(state);
     if (!n) return false;
-    state = n; savePersist(state); render(); return true;
+    state = n; savePersist(state, settings); render(); return true;
   }
 
   function restart() {
     persist = loadPersist();
-    rng = mulberry32(Date.now() >>> 0);
-    state = { ...createGame(Date.now() >>> 0), ...persist };
+    state = newSession();
     selectedSlot = null; ghost = null; drag = null; armed = null;
     setStatus('New game. Good luck!');
   }
@@ -86,7 +99,7 @@ export function mountApp(root: HTMLDivElement | null): void {
   function placeAt(slot: number, row: number, col: number) {
     const res = placeTrayPiece(state, slot, { row, col }, rng);
     if (!res.ok) { setStatus(res.reason === 'invalid_placement' ? 'That piece does not fit there.' : 'Cannot place piece.', 'bad'); return; }
-    state = res.state; savePersist(state);
+    state = res.state; savePersist(state, settings);
     selectedSlot = null; ghost = null; armed = null;
     if (res.clear.linesCleared > 0) setStatus(`Cleared ${res.clear.linesCleared} line${res.clear.linesCleared > 1 ? 's' : ''}!${res.clear.collectedStars ? ` +${res.clear.collectedStars}★` : ''}`, 'good');
     else setStatus(res.clear.collectedStars ? `Collected ${res.clear.collectedStars}★` : 'Placed.');

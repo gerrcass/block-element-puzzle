@@ -52,14 +52,23 @@ export function placeTrayPiece(state: GameState, slot: number, anchor: Point, rn
 
   const stars = state.stars + clear.collectedStars;
   const bestCombo = Math.max(state.bestCombo, clear.linesCleared);
-  // minimal scoring placeholder (ticket 04 expands)
-  const gained = piece.cells.length + clear.linesCleared * 10 * Math.max(1, clear.linesCleared);
+  const multCap = 10;
+  let multiplier = state.multiplier;
+  if (clear.linesCleared > 0) {
+    multiplier = Math.min(multCap, +(multiplier + 0.5 + (clear.linesCleared - 1) * 0.5).toFixed(2));
+  } else {
+    multiplier = Math.max(1, +(multiplier - 0.1).toFixed(2));
+  }
+  const base = piece.cells.length;
+  const clearPts = clear.linesCleared > 0 ? clear.linesCleared * 10 * clear.linesCleared : 0;
+  const gained = Math.round((base + clearPts) * multiplier);
   const score = state.score + gained;
   const next: GameState = {
     ...state,
     board: clear.board,
     tray: tray2,
     score,
+    multiplier,
     stars,
     bestCombo,
     highScore: Math.max(state.highScore, score),

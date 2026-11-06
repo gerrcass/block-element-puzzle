@@ -6,6 +6,10 @@ export function boardFromStrings(rows: string[]): Board {
   );
 }
 
+export function emptyBoardStrings() {
+  return Array.from({ length: 10 }, () => '.'.repeat(10));
+}
+
 export function countOccupied(board: Board): number {
   let n = 0;
   for (const row of board) for (const cell of row) if (cell) n++;
