@@ -6,3 +6,4 @@ export * from './clears';
 export * from './shapes';
 export * from './tray';
 export * from './game';
+export * from './powerups';
